@@ -1,0 +1,217 @@
+---
+title: "Spotfiy charts analysis"
+author: "Daniel Saiger"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+library(lubridate)
+```
+
+```{r}
+#function to resize plots later
+fig <- function(width, heigth){options(repr.plot.width = width, repr.plot.height = heigth)}
+```
+
+
+## Wrangling the Data 
+
+```{r}
+conn <- dbConnect(RSQLite::SQLite(), "../spotify_analysis/charts.sqlite")
+```
+
+```{r}
+df <- tbl(conn, "top200") %>% collect()
+dbDisconnect(conn)
+```
+
+```{r}
+df <- df %>% 
+  separate_rows(artist, sep = ", ") %>%
+  mutate(date = ymd(date), trend = factor(trend))
+```
+
+
+```{r}
+summary(df)
+```
+
+
+```{r}
+#check for null values
+
+df %>% select(artist) %>% is.na() %>% any()
+```
+### Apparently there are no NULL Values in the dataset
+
+```{r}
+df %>%
+  select(artist) %>%
+  arrange(artist) %>%
+  unique() %>%
+  head()
+```
+#### Here we can see that we have no Null values but "-" and " ". So we need to delete them from the file. Let's have a look at the wrongful entries:
+
+```{r}
+df %>% filter(artist %in% c('-', ''))
+```
+
+We get a bunch of entries which we have to delete from the Dataset
+
+```{r}
+df <- df %>%  filter(!(artist %in% c('-', '')))
+```
+
+Checking if it worked:
+
+```{r}
+df %>%
+  select(artist) %>%
+  arrange(artist) %>%
+  unique() %>%
+  head()
+```
+Looks good :-) No more empty entries
+
+
+## Starting to explore the data 
+
+Which artists are in the Top 200?
+
+```{r}
+df %>% 
+  select(artist) %>% 
+  distinct() %>% 
+  nrow()
+```
+So there are **1594** artists in the Top 200 Dataset.
+
+Let's explore which of these artists appeared the most often in the Top 200
+
+```{r}
+df %>% 
+  select(artist) %>%
+  group_by(artist) %>% 
+  count() %>% 
+  arrange(desc(n))
+```
+Ed Sheeran, Post Malone and J Balvin sit comfortably on top of the list. But it's a close race between them. 
+But who got the most streams?
+
+```{r}
+num_streams <- df %>%  
+  select(artist, streams) %>% 
+  group_by(artist) %>% 
+  summarise(num_streams= sum(streams)) %>% 
+  arrange(desc(num_streams))
+
+num_streams %>% head(10)
+```
+Seems like Bad Bunny has some very popular songs.
+Now we look into the number of songs each artist has in the Dataset. Do the artists with the most streams also have to most tracks?
+
+
+```{r} 
+num_tracks <- df %>% 
+  select(artist, title) %>%
+  unique() %>% 
+  group_by(artist) %>% 
+  count(name = "num_tracks") %>% 
+  arrange(desc(num_tracks))
+
+num_tracks %>% head(10)
+```
+
+
+```{r}
+df_join <- num_streams %>% inner_join(num_tracks)
+head(df_join)
+```
+
+```{r}
+
+ggplot(df_join, aes(df_join$num_streams, df_join$num_tracks)) + geom_point() + geom_smooth(method = lm) + labs(x = "Stream Count", y = "Track Count", title = "Correlation Track and Stream Count")
+```
+```{r}
+cor.test(df_join$num_streams, df_join$num_tracks)
+```
+
+Technically there is a high correlation. But if we look at the graph, we can see that that's probably the case because of the high density around 0. There is no linear trend visible.
+We can observe a high correlation between the number of songs and the number of streams.
+
+### Which artist had the most tracks in the Top200 at one single day?
+
+
+```{r}
+df %>% 
+  select(artist, date) %>% 
+  group_by(date) %>% 
+  count(artist) %>% 
+  arrange(desc(n)) %>% 
+  head(10)
+```
+
+
+XXXTENTACION had 37 songs at once in the Top 200 on the 19th June 2018. He got killed on the 18th June 2018 which probably explains this. 
+Linkin Park had 34 Songs at once in the Top 200 on the 21th July 2017. One day before that their vocalist Chester Bennington commited suicide. Music unites people in bad (but also in good!) times...
+
+
+### Which track had the most streams in one day? 
+
+```{r}
+df %>% 
+  select(-c(url, trend)) %>%
+  arrange(desc(streams)) %>%
+  head(20)
+```
+It makes sense that most of those songs are popular christmas hits! But also Olivia Rodrigo seems to be very popular 
+Let's have a closer look at her:
+
+```{r}
+df %>%
+  arrange(desc(streams)) %>% 
+  head(50) %>% 
+  filter(artist == "Olivia Rodrigo") %>% 
+  count()
+```
+Let's see what place she gets in the 50 most streams songs:
+
+```{r}
+df %>%
+  arrange(desc(streams))%>%
+  head(50) %>%
+  group_by(artist) %>% 
+  count() %>% 
+  arrange(desc(n))
+```
+Crazy, more than 50% of the 50 most streamed songs are from Olivia Rodrigo!
+
+```{r}
+df %>% 
+  filter(artist == "Olivia Rodrigo") %>% 
+  arrange(date) %>% 
+  head(1)
+```
+
+The first time she appeared on the charts was 2020-01-06. Apparently she got famous through high school musical. Let's see how she did from there.
+
+
+```{r}
+df %>% 
+  filter(artist == "Olivia Rodrigo") %>% 
+  ggplot(aes(y = rank, x = date, color = title)) + geom_line(show.legend = FALSE) + scale_y_reverse() + theme_minimal()
+```
+
+So we see that she uninterrupted stayed in the charts since her first song. The longest with her first song. The songs after that stayed shorter in top ranks.
+
+
