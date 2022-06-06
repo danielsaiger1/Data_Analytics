@@ -214,4 +214,80 @@ df %>%
 
 So we see that she uninterrupted stayed in the charts since her first song. The longest with her first song. The songs after that stayed shorter in top ranks.
 
+Her total number of streams:
+
+```{r}
+df %>% 
+  filter(artist == "Olivia Rodrigo") %>% 
+  summarise(streams_total = sum(streams))
+```
+
+Her total number of songs:
+
+```{r}
+df %>%
+  filter(artist == "Olivia Rodrigo") %>% 
+  select(title) %>% 
+  unique() %>% 
+  count()
+```
+How do the streams distribute over her songs?
+
+```{r}
+df %>% 
+  filter(artist == "Olivia Rodrigo") %>% 
+  group_by(title) %>% 
+  summarise(total_streams = sum(streams)) %>% 
+  arrange(desc(total_streams))
+```
+Percentage distribution: 
+
+```{r}
+df %>%
+  filter(artist == "Olivia Rodrigo") %>%
+  group_by(title) %>%
+  summarise(total_streams_percent = sum(streams)) %>%
+  mutate(total_streams_percent = total_streams_percent / sum(total_streams_percent) * 100) %>%
+  arrange(desc(total_streams_percent))
+```
+
+```{r}
+df %>%  
+  filter(artist == "Olivia Rodrigo") %>% 
+  select(title, streams) %>% 
+  group_by(title) %>% 
+  ggplot(aes(x = title, y = streams, fill = title)) + geom_col(show.legend = FALSE) + theme_minimal()
+```
+Well, this does not look very clean... Let's try out the plotly Library
+
+```{r}
+library(plotly)
+```
+```{r}
+plot <- df %>%  
+  filter(artist == "Olivia Rodrigo") %>%
+  group_by(title) %>%
+  summarise(total_streams_percent = sum(streams)) %>%
+  mutate(total_streams_percent = total_streams_percent / sum(total_streams_percent) * 100) %>%
+  ggplot(aes(x = title, y = total_streams_percent, fill = title)) +
+  geom_col() +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(), legend.position = "none")+
+  labs(title = "%-Distribution of Olivia Rodrigo streams", x = "Song", y = "%-Streams")
+
+ggplotly(plot)
+```
+
+The Song "Drivers License" is the most popular
+
+
+
+
+
+
+
+
+
+
+
 
